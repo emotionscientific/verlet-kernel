@@ -13,7 +13,7 @@ jobs:
     name: Rotating scenario sweep
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       # Same headroom problem as the Verify workspace job (EMO-515): the
       # debug test build no longer fits where the work folder lives, so free
       # bloat and put the cargo target dir on the big root disk.
