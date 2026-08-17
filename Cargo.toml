@@ -71,7 +71,7 @@ toml = "0.9"
 # deliberate, reviewed changes (EMO-545).
 tuika = "=0.8.0"
 turso = "=0.7.0-pre.19"
-turso_core = "=0.7.0-pre.19"
+turso_core = "=0.8.0-pre.4"
 uuid = "1"
 wasmtime = { version = "44.0.1", default-features = false, features = ["async", "cache", "cranelift", "runtime", "std"] }
 wat = "1"
