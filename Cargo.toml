@@ -70,7 +70,7 @@ toml = "0.9"
 # Pinned exact: tuika is pre-1.0 and minor releases may break API. Upgrades are
 # deliberate, reviewed changes (EMO-545).
 tuika = "=0.8.0"
-turso = "=0.7.0-pre.19"
+turso = "=0.8.0-pre.4"
 turso_core = "=0.7.0-pre.19"
 uuid = "1"
 wasmtime = { version = "44.0.1", default-features = false, features = ["async", "cache", "cranelift", "runtime", "std"] }
