@@ -937,13 +937,11 @@ mod tests {
     fn bounded_reads_reject_a_fifo_before_waiting_for_a_writer() {
         let root = tempfile::tempdir().unwrap();
         let fifo = root.path().join("named.pipe");
-        assert!(
-            std::process::Command::new("mkfifo")
-                .arg(&fifo)
-                .status()
-                .unwrap()
-                .success()
-        );
+        assert!(std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success());
         let writer_path = fifo.clone();
         let writer = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(500));

@@ -511,13 +511,11 @@ mod tests {
         );
         assert_eq!(output.match_count, 1);
         assert!(output.limit_reached);
-        assert!(
-            !recording
-                .reads
-                .borrow()
-                .iter()
-                .any(|path| path.ends_with("b.txt"))
-        );
+        assert!(!recording
+            .reads
+            .borrow()
+            .iter()
+            .any(|path| path.ends_with("b.txt")));
     }
 
     #[test]
@@ -576,13 +574,11 @@ mod tests {
         let output = crate::run(args("hit"), &recording).unwrap();
 
         assert_eq!(output.text, "text.txt:1: hit");
-        assert!(
-            !recording
-                .reads
-                .borrow()
-                .iter()
-                .any(|path| path.ends_with("oversized.txt"))
-        );
+        assert!(!recording
+            .reads
+            .borrow()
+            .iter()
+            .any(|path| path.ends_with("oversized.txt")));
     }
 
     #[test]
@@ -680,16 +676,12 @@ mod tests {
         invalid_glob.glob = Some("[".to_owned());
         let glob_error = crate::run(invalid_glob, &fs(root.path())).unwrap_err();
 
-        assert!(
-            regex_error
-                .to_string()
-                .starts_with("invalid arguments: invalid search pattern")
-        );
-        assert!(
-            glob_error
-                .to_string()
-                .starts_with("invalid arguments: invalid glob pattern")
-        );
+        assert!(regex_error
+            .to_string()
+            .starts_with("invalid arguments: invalid search pattern"));
+        assert!(glob_error
+            .to_string()
+            .starts_with("invalid arguments: invalid glob pattern"));
     }
 
     #[test]
