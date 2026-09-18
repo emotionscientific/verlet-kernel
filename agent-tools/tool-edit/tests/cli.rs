@@ -31,10 +31,12 @@ fn cli_edits_a_file_within_its_confined_root() {
         value["ok"]["text"],
         "Successfully replaced 1 block(s) in file.txt."
     );
-    assert!(value["ok"]["details"]["diff"]
-        .as_str()
-        .unwrap()
-        .contains("+2 there"));
+    assert!(
+        value["ok"]["details"]["diff"]
+            .as_str()
+            .unwrap()
+            .contains("+2 there")
+    );
     assert_eq!(
         std::fs::read_to_string(root.path().join("file.txt")).unwrap(),
         "hello\nthere\n"

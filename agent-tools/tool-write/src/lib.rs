@@ -159,11 +159,13 @@ mod tests {
     #[test]
     fn rejects_a_fifo_before_opening_it() {
         let root = tempfile::tempdir().unwrap();
-        assert!(std::process::Command::new("mkfifo")
-            .arg(root.path().join("named.pipe"))
-            .status()
-            .unwrap()
-            .success());
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(root.path().join("named.pipe"))
+                .status()
+                .unwrap()
+                .success()
+        );
 
         let error = crate::run(args("named.pipe", "blocked"), &fs(root.path())).unwrap_err();
 

@@ -283,11 +283,13 @@ mod tests {
 
         crate::run(args("**", None), &recording).unwrap();
 
-        assert!(!recording
-            .read_dirs
-            .borrow()
-            .iter()
-            .any(|path| path.ends_with("ignored")));
+        assert!(
+            !recording
+                .read_dirs
+                .borrow()
+                .iter()
+                .any(|path| path.ends_with("ignored"))
+        );
     }
 
     #[test]
@@ -313,9 +315,11 @@ mod tests {
 
         let error = crate::run(args("[", None), &fs(root.path())).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .starts_with("invalid arguments: invalid glob pattern"));
+        assert!(
+            error
+                .to_string()
+                .starts_with("invalid arguments: invalid glob pattern")
+        );
     }
 
     #[test]

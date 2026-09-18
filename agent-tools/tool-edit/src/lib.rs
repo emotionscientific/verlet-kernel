@@ -410,9 +410,7 @@ pub fn run(
         if previous.match_index + previous.match_length > current.match_index {
             return Err(verlet_tool_core::ToolError::Failed(format!(
                 "edits[{}] and edits[{}] overlap in {}. Merge them into one edit or target disjoint regions.",
-                previous.edit_index,
-                current.edit_index,
-                path_display,
+                previous.edit_index, current.edit_index, path_display,
             )));
         }
     }
@@ -972,10 +970,12 @@ mod tests {
         assert_eq!(output.edits_applied, 1);
         assert_eq!(output.text, "Successfully replaced 1 block(s) in file.txt.");
         assert_eq!(output.details.diff, "-1 Hello, world!\n+1 Hello, testing!");
-        assert!(output
-            .details
-            .patch
-            .starts_with("--- file.txt\n+++ file.txt\n@@"));
+        assert!(
+            output
+                .details
+                .patch
+                .starts_with("--- file.txt\n+++ file.txt\n@@")
+        );
         assert_eq!(output.details.first_changed_line, Some(1));
         assert_eq!(
             std::fs::read(root.path().join("file.txt")).unwrap(),
@@ -1171,11 +1171,13 @@ mod tests {
     #[test]
     fn a_fifo_is_rejected_before_edit_opens_it() {
         let root = tempfile::tempdir().unwrap();
-        assert!(std::process::Command::new("mkfifo")
-            .arg(root.path().join("named.pipe"))
-            .status()
-            .unwrap()
-            .success());
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(root.path().join("named.pipe"))
+                .status()
+                .unwrap()
+                .success()
+        );
 
         let error = crate::run(
             args("named.pipe", &[("hello", "goodbye")]),
@@ -1526,9 +1528,11 @@ mod tests {
                 .get("oldText")
                 .is_some()
         );
-        assert!(contract.input_schema["properties"]["edits"]
-            .get("minItems")
-            .is_none());
+        assert!(
+            contract.input_schema["properties"]["edits"]
+                .get("minItems")
+                .is_none()
+        );
         assert_eq!(
             contract.description,
             "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes."

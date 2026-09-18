@@ -452,15 +452,18 @@ mod tests {
         let over = crate::run(args("large.txt", Some(2), Some(2001)), &filesystem).unwrap();
 
         assert!(exact.truncation.is_none());
-        assert!(exact
-            .text
-            .ends_with("\n\n[1 more lines in file. Use offset=2002 to continue.]"));
+        assert!(
+            exact
+                .text
+                .ends_with("\n\n[1 more lines in file. Use offset=2002 to continue.]")
+        );
         assert_eq!(exact.start_line, 2);
         assert_eq!(exact.end_line, 2001);
         assert!(over.truncation.is_some());
-        assert!(over
-            .text
-            .ends_with("\n\n[Showing lines 2-2001 of 2002. Use offset=2002 to continue.]"));
+        assert!(
+            over.text
+                .ends_with("\n\n[Showing lines 2-2001 of 2002. Use offset=2002 to continue.]")
+        );
     }
 
     #[test]
