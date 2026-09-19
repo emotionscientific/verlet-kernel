@@ -36,6 +36,10 @@ resolver = "3"
 edition = "2024"
 version = "0.5.1"
 
+# crane reads these for the deps-only/clippy derivations (no root package table here).
+[workspace.metadata.crane]
+name = "verlet-kernel"
+
 [workspace.dependencies]
 async-trait = "0.1"
 base64 = "0.22"

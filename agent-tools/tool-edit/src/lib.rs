@@ -410,9 +410,7 @@ pub fn run(
         if previous.match_index + previous.match_length > current.match_index {
             return Err(verlet_tool_core::ToolError::Failed(format!(
                 "edits[{}] and edits[{}] overlap in {}. Merge them into one edit or target disjoint regions.",
-                previous.edit_index,
-                current.edit_index,
-                path_display,
+                previous.edit_index, current.edit_index, path_display,
             )));
         }
     }

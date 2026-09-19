@@ -2,8 +2,8 @@
   perSystem = {
     pkgs,
     rustToolchain,
-    lib,
     commonArgs,
+    wildRustflags,
     ...
   }: {
     devShells.default = pkgs.mkShell {
@@ -17,20 +17,15 @@
           pkgs.sccache
           pkgs.cargo-nextest
 
-          pkgs.just
+          # scripts/build-console-assets.sh
           pkgs.bun
-        ]
-        ++ lib.optionals pkgs.stdenv.isLinux [pkgs.wild];
+        ];
+
+      # Same wild flags as the package build, so `cargo` here links with wild too.
+      CARGO_BUILD_RUSTFLAGS = wildRustflags;
 
       RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
-
-      shellHook =
-        ''
-          export RUSTC_WRAPPER=sccache
-        ''
-        + lib.optionalString pkgs.stdenv.isLinux ''
-          export RUSTFLAGS="''${RUSTFLAGS:-} -C link-arg=-fuse-ld=wild"
-        '';
+      RUSTC_WRAPPER = "sccache";
     };
   };
 }
