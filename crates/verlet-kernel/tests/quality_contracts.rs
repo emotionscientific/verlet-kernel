@@ -214,8 +214,6 @@ fn public_docs_pin_repo_positioning_and_workflow() {
     let blind_test = read(repo_root().join("scripts/ax-blind-test.sh"));
 
     for required in [
-        "open serverless agent platform",
-        "declarative unit",
         "agent manifests",
         "operation publishing",
         "ABI contracts",
@@ -232,13 +230,6 @@ fn public_docs_pin_repo_positioning_and_workflow() {
 
     assert!(docs_index.contains("Public API Coverage](public-api-coverage.md)"));
     assert!(docs_index.contains("Kernel Invariants](kernel-invariants.md)"));
-    assert!(public_docs.contains("open serverless agent platform"));
-    assert!(public_docs.contains("declarative unit"));
-    assert!(public_docs.contains("Define the agent, not the app around it"));
-    assert!(public_docs.contains("acceleration, not lock-in"));
-    assert!(public_docs.contains("Install agents like"));
-    assert!(public_docs.contains("packages"));
-    assert!(public_docs.contains("Declarative Agents"));
     assert!(docs_system.contains("docs/"));
     assert!(docs_system.contains("internal planning notes"));
     assert!(agents.contains("Agent Experience (AX)"));
@@ -246,9 +237,6 @@ fn public_docs_pin_repo_positioning_and_workflow() {
     assert!(blind_test.contains("Verlet AX Blind-Test Care Test"));
     assert!(blind_test.contains("docs/"));
     assert!(blind_test.contains("Why should I give a shit about Verlet?"));
-    assert!(blind_test.contains("Vercel for agents"));
-    assert!(blind_test.contains("without vendor lock-in"));
-    assert!(blind_test.contains("govern agents like infrastructure"));
     assert!(blind_test.contains("VERLET_AX_AGENT_COMMAND"));
     assert!(blind_test.contains("codex exec"));
 }

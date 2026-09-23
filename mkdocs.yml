@@ -1,7 +1,6 @@
 site_name: Verlet Docs
-site_description: Open serverless agent platform for packageable, governed agents.
-site_url: https://cooldis.someone.cool/docs/
-repo_url: https://github.com/emotionscientific/cooldis
+site_description: Open-source runtime for AI agents that records every step.
+repo_url: https://github.com/emotionscientific/verlet-kernel
 docs_dir: docs
 site_dir: .site/docs
 
@@ -11,20 +10,49 @@ theme:
   navigation_depth: 3
 
 nav:
+  - Home: README.md
   - Overview: index.md
   - Getting Started: getting-started.md
-  - CLI: cli.md
   - Concepts:
-      - Declarative Agents: concepts/declarative-agents.md
-      - Local To Managed Deployment: concepts/local-to-managed.md
-      - Permissions And Governance: concepts/permissions-and-governance.md
-  - Developers:
+      - The Record: concepts/the-record.md
+      - Tools And Bindings: concepts/tools-and-bindings.md
+      - Permissions: concepts/permissions.md
+      - Kernel Invariants: kernel-invariants.md
+  - Guides:
+      - Chat Console: chat.md
+      - Provider Setup: provider-setup.md
+      - Agent CLI: agent-cli.md
+      - Wasm Operation Dev Kit: wasm-operation-dev-kit.md
+      - OpenAPI Imports: openapi-adapter.md
+      - Secret Management: secret-management.md
+      - Daemon: daemon.md
+      - MCP Server: mcp-server.md
+      - ACP Agent: acp-agent.md
+  - Reference:
+      - CLI: cli.md
+      - Agent Manifest: agent-manifest-ontology.md
+      - Standard Operations: standard-operations.md
+      - Operation ABI: abi.md
+      - RPC Control Plane: app-server.md
+      - Command Contracts: command-contracts.md
+      - Provider Adapters: provider-adapters.md
+      - Provider Storage: provider-storage.md
+      - Publish Storage: publish-storage.md
+      - ACP Thread Projection: acp-thread-projection.md
+      - Frozen Format IDs: format-ids.md
+  - How It Is Built:
+      - Repository Map: repository-map.md
+      - Verlet IO: io.md
+      - Threat Model: threat-model.md
+      - How Verlet Is Tested: how-verlet-is-tested.md
+      - Testing Guidelines: testing-guidelines.md
       - Runtime Primitives: developers/runtime-primitives.md
       - Protocol Surfaces: developers/protocol-surfaces.md
       - Public API Surface: developers/public-api-surface.md
       - Documentation System: developers/documentation-system.md
-      - Threat Model: threat-model.md
-  - Roadmap: roadmap.md
+      - Public API Coverage: public-api-coverage.md
+      - V1 Release Candidate Gate: v1-release-candidate.md
+      - Roadmap: roadmap.md
 
 markdown_extensions:
   - admonition

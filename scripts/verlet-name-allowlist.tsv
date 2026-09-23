@@ -171,7 +171,6 @@ docs/standard-operations.md	Current documentation names a stable wire identifier
 docs/wasm-operation-dev-kit.md	Current documentation names a stable wire identifier or out-of-scope repository URL.
 examples/wasm-counter-coupling/README.md	Example or package contract preserves a stable ABI manifest or receipt identifier.
 examples/wasm-counter-coupling/src/lib.rs	Example or package contract preserves a stable ABI manifest or receipt identifier.
-mkdocs.yml	Repository remote site or external workflow identity is out of scope for EMO-520.
 proto/verlet.bridge.v1.proto	Stable persisted storage ABI or wire identifier remains unchanged for compatibility.
 scripts/ci-receipts.sh	Shipped release receipt filenames remain historical.
 scripts/verlet-name-allowlist.tsv	The lint's own closed list necessarily spells the frozen identifiers it permits.

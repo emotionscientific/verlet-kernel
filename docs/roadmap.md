@@ -1,41 +1,26 @@
 # Roadmap
 
-Verlet V1 is the runtime-primitives release. V2 is the serverless agent
-platform direction.
+Verlet is experimental. The current release is v0.5.1, and the
+[overview](index.md#what-works-today) lists what works today. This page lists
+what comes next.
 
-## V1 Direction
+## In Progress
 
-V1 proves local packageable agents with durable execution.
+- **Approvals end to end.** A recorded approval releases the held tool call,
+  records who approved it, and shows up in the terminal chat.
+- **Pluggable policy.** Tool-call decisions can come from an outside policy
+  service, with the request and the decision on the record.
+- **Evidence export.** A stable export of a thread's record for governance
+  and compliance systems.
+- **Managed cloud.** Hardening the kernel for Verlet Cloud, which runs on it
+  today as a hands-on service.
 
-Core proofs:
+## Later
 
-- build and publish ABI-backed operations;
-- publish and run an agent manifest that pins those operations;
-- run a durable local agent through CLI, daemon, RPC, ACP, and MCP surfaces;
-- record events and receipts that explain tool calls, provider calls, and
-  runtime decisions;
-- package release binaries for supported targets;
-- keep provider credentials, runtime secrets, and public examples separated.
+- Remote and sandboxed placement for threads.
+- A public package registry for agents and tools.
+- Self-serve cloud placement.
 
-## V2 Direction
-
-V2 adds the product platform around the kernel:
-
-- managed cloud placement;
-- package and tool registries;
-- private package sharing;
-- richer scheduling and trigger surfaces;
-- stateful harness export, import, and diff;
-- stronger provider, sandbox, observability, and policy adapter boundaries;
-- cloud promotion from local records;
-- production ownership surfaces for events, secrets, quotas, audit, and
-  cancellation.
-
-## Discipline
-
-```text
-Code builds primitives.
-Manifests compose agents.
-Runtime enforces authority.
-Release gates prove the public surface.
-```
+Changes that remove or rename something are listed in the changelog and the
+release notes. Verlet does not keep old names or old record formats working
+across releases.
