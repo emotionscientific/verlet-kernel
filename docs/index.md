@@ -1,131 +1,86 @@
 # Verlet
 
-Verlet is an open serverless agent platform.
+Verlet is an open-source runtime for AI agents, written in Rust. It runs the
+same loop as Claude Code or Codex: a model, a system prompt, a set of tools,
+and turns. What changes is where the agent's state lives. Verlet writes every
+step of a run to an append-only record, and that record is the agent's only
+state. Resume, fork, audit, and debugging all read the same record.
 
-Define the agent, not the app around it.
+Verlet is experimental. It is the engine under Verlet Cloud, the managed
+agents service.
 
-Build agents locally. Publish them to managed cloud. Install agents like
-packages. Govern them like infrastructure. Keep the agent definition portable so
-the managed platform is acceleration, not lock-in.
+## If You Know A Harness
 
-Verlet treats an agent manifest as a declarative unit and preset: describe model
-profiles, policies, runtime defaults, workspace and placement needs, context,
-and proposed tool/resource bindings before the agent runs. At start, the
-runtime expands the preset into an opening sequence of recorded attachments.
-The thread's toolset is the fold of those binding events, not a standing
-manifest document.
+Most of what you know carries over. This table maps the parts of a typical
+harness to their Verlet equivalents.
 
-## Why Care
+| In your harness | In Verlet |
+| --- | --- |
+| System prompt, `CLAUDE.md`, `AGENTS.md` | An **agent manifest**: a folder with `verlet.agent.toml` and `prompts/system.md`. Verlet does not load project instruction files on its own. |
+| Tool list, MCP server config | **Tool rows** in the manifest. When a thread starts, the runtime writes one `binding.attached` event for each tool package. The model's tools come from those events and from nothing else. |
+| Session transcript file | The thread's **record**: typed events in a local database under `.verlet/state/`. |
+| `--resume`, `--continue` | Resume reads the record, including which manifest and tools the thread was bound to. It does not re-read the manifest from disk. |
+| Bash tool | **Virtual bash** over an in-memory filesystem. A host directory is visible only when the manifest asks for a workspace and the operator names the directory. |
+| Permission prompts, allow lists | A **controller** that sees each tool call before it runs and decides allow, rewrite, deny, or wait. With no controller, every attached tool runs. |
+| Hooks | Not configurable yet. The hook pipeline exists in the code but has no user-facing switch. |
+| Subagents | **Child threads**, started with the `thread_spawn` tool. Each child has its own record and its own tools. |
+| Skills | `SKILL.md` directories, published as packages or discovered from `.agents/skills`. |
+| SDK, app-server | A JSON-RPC server with the same message shapes as the Codex app-server, plus an MCP server and an ACP agent. |
 
-Serious agents are not hard because prompts are hard. They are hard because every
-agent turns into a small backend: deployment, tools, secrets, permissions,
-runtime state, logs, failures, retries, rollback, and a place to run.
+## What Is Different
 
-Verlet gives that backend shape to the runtime. You focus on the agent: what it
-does, what tools it can use, what resources it can see, and what powers it is
-allowed to exercise.
+**The record is the state.** A thread is the ordered list of its events:
+user messages, model replies, tool calls, tool results, and the runtime's own
+decisions. When Verlet restarts, it rebuilds each thread by reading that
+list. Nothing the agent did lives only in memory.
 
-## What You Can Do
+**Tools come only from bindings.** A tool exists for an agent when its
+binding event is on the record. A prompt cannot grant a tool, and a config
+change on disk does not change a running thread. A thread's tools change only
+through new attach and detach events, which are written when the thread is
+bound to a manifest again.
 
-- Build an agent locally from a manifest.
-- Attach tools and resources, with explicit secret and private-network config.
-- Install a local kit of tool packages into content-addressed operation records
-  plus one removable installed-kit record.
-- Use the checked-in Pi kit for pinned `read`, `write`, `edit`, `find`, and
-  `grep` tools, or build its precompiled distributable without requiring Cargo
-  at install time. Models see a closed nested-argument schema while `root`
-  names the guest `/workspace` mount backed by the instance's witnessed host
-  directory; raw virtual-bash operation aliases cannot bypass that split.
-- Publish static prompt and context files as immutable blob resources.
-- Publish local skill directories, author manifests against a package name, and
-  receive a content hash in the bind receipt.
-- Import conventional external `SKILL.md` directories into ordinary skill and
-  blob records with explicit script degradation and inert hook configuration.
-- Opt into conventional workspace skill discovery and retain the exact bind
-  witness across resume/fork while later workspace reads remain live.
-- Run the agent through a governed runtime instead of a one-off app server.
-- Inspect events, tool calls, receipts, artifacts, and the effective bind
-  envelope recorded for a thread.
-- Resume work by re-folding the thread's durable records, without re-binding or
-  consulting the current agent registry.
-- Start idempotent process handles whose terminal outcomes re-enter the owning
-  thread through durable ingress.
-- Place manifest-bound child threads in separate local processes through the
-  daemon's authenticated store-backed queue and stream-sync surface.
-- Publish the same declared agent shape toward managed placement when the cloud
-  path is ready.
+**Everything is pinned by hash.** Published tools, prompts, and skills are
+stored by content hash. When you publish an agent, its tool references are
+resolved to exact hashes. The record names those hashes, so you can always
+tell which code and which prompt produced a result.
 
-## Declarative Agent Shape
+**Every decision is written down.** When the runtime resolves a name, builds
+the model's context, or decides whether a tool call may run, it writes a
+receipt: an event that says what it decided and from which inputs. `verlet
+debug bind` and `verlet debug journal` print these.
 
-```text
-manifest preset
-+ model profiles, policies, runtime defaults, workspace, and context
-+ proposed tools, resources, couplings, and attachment config
--> bind expansion
--> recorded binding.attached / binding.detached history
--> folded toolset and governed runtime
-```
+## What Works Today
 
-The runtime owns lifecycle, permissions, tool visibility, operation projection,
-events, cancellation, resume, and audit records. Product code can configure and
-call Verlet without becoming the runtime.
+The current release is v0.5.1. You can:
 
-## Mental Models
+- chat with an agent in the terminal (`verlet chat`) or the browser
+  (`verlet console`), against OpenAI, Anthropic, any OpenAI-compatible
+  endpoint, or a ChatGPT plan;
+- write an agent manifest, publish it, and start threads from it;
+- give agents tools written in Rust and compiled to Wasm, tools imported from
+  an OpenAPI description, and tools from remote MCP servers;
+- mount a host directory into a thread, read-only or read-write;
+- hold a tool call for approval, and record the approval or denial (from
+  the web console or over RPC);
+- start child threads, including in separate local processes;
+- resume and fork threads, and read their full record.
 
-If you know Vercel, think of Verlet as the local-to-managed path for agents:
-define locally, inspect the runtime shape, publish when ready, observe what
-happened, and keep the source definition portable.
+These are designed but not built yet:
 
-If you know Terraform or Dockerfiles, the familiar part is declaration. Declare
-the agent, tools, resources, attachments, behavior, and placement instead of hiding
-that shape inside application code. Verlet turns the declaration into a running
-agent across local and future cloud runtimes.
-
-If you know package managers, the destination is installable agents and tools:
-fetch a versioned agent or tool package, inspect its attachments and package
-capabilities, and run it under policy.
-
-## Current Status
-
-Verlet is experimental. The repository is focused on V1 runtime primitives:
-agent manifests, operation publishing, ABI contracts, macro-authored custom Wasm
-couplings, witnessed OpenAPI operation imports, offline coupling replay,
-local tool-kit installation and installed-record management,
-local runtime execution, provider adapters including OpenAI Codex access through
-a user's ChatGPT plan,
-virtual bash, VFS-backed oversized-output spill receipts,
-skill-package resources with bind-time name pinning, witnessed workspace skill
-discovery without a second mount, bind-plane local host-workspace mounts,
-the [CLI control-plane surfaces](cli.md#server-and-client-commands),
-daemon-embedded store-primary
-stream propagation, store-backed remote child placement, and the proof path for
-packageable local agents.
-
-The managed cloud, public package registry, private marketplace, and stateful
-harness product layer are V2 direction.
-
-The runtime also exposes a multi-tenant host facade and `verlet host run`: one
-listener selects an instance from an explicit credential-digest route, while
-the selected instance remains responsible for authentication, witnessing, and
-its own default mandate clock and shutdown boundary. Non-loopback
-private-network binds require an explicit config opt-in; see
-[RPC Control Plane](app-server.md#config-driven-multi-instance-host).
+- a way to configure hooks;
+- running a held tool call once someone approves it (today the approval is
+  recorded, but the call stays held), and an approval prompt in the terminal
+  chat;
+- context budgets (the manifest accepts `budget_share`, but it has no effect
+  yet);
+- remote and sandboxed placement, and a public package registry.
 
 ## Read Next
 
-- [Getting Started](getting-started.md)
-- [Declarative Agents](concepts/declarative-agents.md)
-- [Local To Managed Deployment](concepts/local-to-managed.md)
-- [Permissions And Governance](concepts/permissions-and-governance.md)
-- [Runtime Primitives](developers/runtime-primitives.md)
-- [Chat Console](chat.md)
-- [Provider Setup](provider-setup.md)
-- [Daemon And Remote Placement](daemon.md)
-- [State Home Access Rules](app-server.md#state-home-access-rules)
-- [Protocol Surfaces](developers/protocol-surfaces.md)
-- [Threat Model](threat-model.md)
-- [Frozen Format IDs](format-ids.md)
-- [OpenAPI Operation Imports](openapi-adapter.md)
-- [Wasm Operation Dev Kit And Kits](wasm-operation-dev-kit.md#kits)
-- [How Verlet Is Tested](how-verlet-is-tested.md)
-- [Roadmap](roadmap.md)
+- [Getting Started](getting-started.md): install, chat, write an agent, and
+  read its record.
+- [The Record](concepts/the-record.md), [Tools And Bindings](concepts/tools-and-bindings.md),
+  and [Permissions](concepts/permissions.md): the three ideas the rest of the
+  docs build on.
+- [Verlet Docs](README.md): the full list of pages.
