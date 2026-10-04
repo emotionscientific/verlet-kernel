@@ -54,7 +54,10 @@
         commonArgs
         // {
           inherit cargoArtifacts;
-          cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+          # Same gate as Justfile, scripts/verify.sh, scripts/check-pre-push.sh and
+          # scripts/release-v1-candidate.sh: style lints stay allowed, while
+          # correctness, suspicious and perf are hard errors.
+          cargoClippyExtraArgs = "--all-targets -- -A clippy::all -D clippy::correctness -D clippy::suspicious -D clippy::perf";
         }
       );
     };
