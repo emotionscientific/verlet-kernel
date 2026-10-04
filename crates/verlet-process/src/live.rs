@@ -860,16 +860,18 @@ async fn wait_for_host_child(
 
 async fn terminate_child(child: &mut tokio::process::Child, child_id: Option<u32>) {
     #[cfg(unix)]
-    if let Some(child_id) = child_id {
+    if let Some(process_group) = crate::signalable_process_group(child_id) {
+        // SAFETY: process_group is a positive group id this child was made
+        // leader of; crate::signalable_process_group rejects 0 and negatives.
         unsafe {
-            libc::killpg(child_id as libc::pid_t, libc::SIGTERM);
+            libc::killpg(process_group, libc::SIGTERM);
         }
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         unsafe {
-            libc::killpg(child_id as libc::pid_t, libc::SIGKILL);
+            libc::killpg(process_group, libc::SIGKILL);
         }
         let _ = child.wait().await;
-        reap_adopted_process_group(child_id as libc::pid_t).await;
+        reap_adopted_process_group(process_group).await;
         return;
     }
     let _ = child.kill().await;
@@ -878,15 +880,16 @@ async fn terminate_child(child: &mut tokio::process::Child, child_id: Option<u32
 
 async fn terminate_reaped_process_group(child_id: Option<u32>) {
     #[cfg(unix)]
-    if let Some(child_id) = child_id {
+    if let Some(process_group) = crate::signalable_process_group(child_id) {
+        // SAFETY: see terminate_child.
         unsafe {
-            libc::killpg(child_id as libc::pid_t, libc::SIGTERM);
+            libc::killpg(process_group, libc::SIGTERM);
         }
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         unsafe {
-            libc::killpg(child_id as libc::pid_t, libc::SIGKILL);
+            libc::killpg(process_group, libc::SIGKILL);
         }
-        reap_adopted_process_group(child_id as libc::pid_t).await;
+        reap_adopted_process_group(process_group).await;
     }
     #[cfg(not(unix))]
     let _ = child_id;
@@ -921,7 +924,7 @@ struct ProcessGroupKillGuard {
 impl ProcessGroupKillGuard {
     fn new(child_id: Option<u32>) -> Self {
         Self {
-            process_group: child_id.map(|id| id as libc::pid_t),
+            process_group: crate::signalable_process_group(child_id),
         }
     }
 
