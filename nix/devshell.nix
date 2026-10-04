@@ -19,6 +19,10 @@
 
           # scripts/build-console-assets.sh
           pkgs.bun
+
+          # Tests spawn python3 (adapters::mcp_client), and scripts/build-primer.py
+          # backs `just primer`.
+          pkgs.python3
         ];
 
       # Same wild flags as the package build, so `cargo` here links with wild too.
