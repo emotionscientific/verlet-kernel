@@ -31,6 +31,20 @@ pub enum IoError {
     Queue(String),
     #[error("IO delivery failed: {0}")]
     Delivery(String),
+    /// Delivery cannot succeed however many times it is attempted: the chat is
+    /// gone, the bot was blocked, the token is bad. Retrying burns the whole
+    /// attempt budget to reach the same dead letter, so the egress loop stops
+    /// after the first one.
+    #[error("IO delivery permanently failed: {0}")]
+    PermanentDelivery(String),
+    /// The remote asked us to slow down. `retry_after_ms` is the remote's own
+    /// figure when it supplied one; honoring it matters because retrying a
+    /// rate limit early typically extends it.
+    #[error("IO delivery was rate limited: {message}")]
+    RateLimited {
+        retry_after_ms: Option<u64>,
+        message: String,
+    },
     #[error("IO bridge failed: {0}")]
     Bridge(String),
 }
@@ -593,8 +607,6 @@ pub enum AdmissionDecision {
     },
     Reject {
         reason: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        retry_after_ms: Option<u64>,
     },
 }
 
@@ -632,7 +644,6 @@ impl AdmissionDecision {
     pub fn reject(reason: impl Into<String>) -> Self {
         Self::Reject {
             reason: reason.into(),
-            retry_after_ms: None,
         }
     }
 }

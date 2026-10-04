@@ -4492,6 +4492,10 @@ impl VerletDaemonIoBridge {
         };
         let max_attempts = retry.max_attempts.max(1);
         let mut last_error = String::new();
+        // Tracks what the loop actually spent, which is below max_attempts when a
+        // permanent failure cuts it short; the receipt and dead letter record
+        // the real count rather than the budget.
+        let mut attempts_used = max_attempts;
         for attempt in 1..=max_attempts {
             match adapter.deliver(envelope.clone()).await {
                 Ok(receipt) => {
@@ -4518,8 +4522,24 @@ impl VerletDaemonIoBridge {
                 }
                 Err(err) => {
                     last_error = err.to_string();
+                    // A permanent failure fails the same way on every attempt,
+                    // so spending the rest of the budget on it only delays the
+                    // dead letter it is already headed for.
+                    if matches!(err, verlet_io_core::IoError::PermanentDelivery(_)) {
+                        attempts_used = attempt;
+                        break;
+                    }
                     if attempt < max_attempts {
-                        let delay = egress_backoff_delay(retry.base_backoff_ms, attempt);
+                        // Prefer the remote's own figure over the backoff
+                        // curve: retrying a rate limit early typically extends
+                        // it rather than getting the message through sooner.
+                        let delay = match err {
+                            verlet_io_core::IoError::RateLimited {
+                                retry_after_ms: Some(retry_after_ms),
+                                ..
+                            } => std::time::Duration::from_millis(retry_after_ms),
+                            _ => egress_backoff_delay(retry.base_backoff_ms, attempt),
+                        };
                         if !delay.is_zero() {
                             tokio::time::sleep(delay).await;
                         }
@@ -4535,7 +4555,7 @@ impl VerletDaemonIoBridge {
             envelope_index,
             &dedupe_key,
             &envelope,
-            max_attempts,
+            attempts_used,
             &last_error,
         )
         .await?;
@@ -4547,7 +4567,7 @@ impl VerletDaemonIoBridge {
             envelope_index,
             dedupe_key: dedupe_key.clone(),
             egress_kind: egress_kind.clone(),
-            attempts: max_attempts,
+            attempts: attempts_used,
             error: last_error,
             envelope,
         })?;

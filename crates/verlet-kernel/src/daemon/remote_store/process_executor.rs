@@ -900,7 +900,8 @@ pub(crate) async fn run_remote_child(
                 Err(
                     error @ (verlet_io_core::IoError::InvalidEnvelope(_)
                     | verlet_io_core::IoError::UnknownProtocol(_)
-                    | verlet_io_core::IoError::PolicyRejected(_)),
+                    | verlet_io_core::IoError::PolicyRejected(_)
+                    | verlet_io_core::IoError::PermanentDelivery(_)),
                 ) => {
                     return Err(remote_error(format!(
                         "remote child ingress rejected: {error}"
@@ -909,6 +910,7 @@ pub(crate) async fn run_remote_child(
                 Err(
                     verlet_io_core::IoError::Queue(_)
                     | verlet_io_core::IoError::Delivery(_)
+                    | verlet_io_core::IoError::RateLimited { .. }
                     | verlet_io_core::IoError::Bridge(_),
                 ) => {
                     // The ordinary durable ingress lane owns dedupe. Retrying the
