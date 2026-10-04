@@ -1,6 +1,5 @@
 use chrono::TimeZone as _;
 use std::str::FromStr as _;
-use verlet_history::EventStore as _;
 
 pub const CLOCK_TICK_ROUTE_KIND: &str = "clock.tick";
 pub const TIMER_FIRED_ENVELOPE_KIND: &str = "timer.fired";
@@ -216,27 +215,14 @@ async fn fired_occurrence_indices(
 ) -> crate::kernel::runtime_host::VerletResult<
     std::collections::HashSet<(verlet_history::EventRecordId, u64)>,
 > {
-    let events = store
-        .read_events(
-            &crate::kernel::control_decision::control_stream_id(coordinates),
-            None,
-        )
+    Ok(store
+        .list_fired_timer_occurrences(&crate::kernel::control_decision::control_stream_id(
+            coordinates,
+        ))
         .await
-        .map_err(|err| crate::kernel::runtime_host::VerletError::History(err.to_string()))?;
-    let mut fired = std::collections::HashSet::new();
-    for event in events {
-        if event.kind != verlet_history::EventKind::TimerFired {
-            continue;
-        }
-        let payload = serde_json::from_value::<verlet_history::TimerFiredPayload>(event.payload)
-            .map_err(|err| {
-                crate::kernel::runtime_host::VerletError::History(format!(
-                    "timer.fired payload is invalid: {err}"
-                ))
-            })?;
-        fired.insert((payload.mandate_event_id, payload.occurrence_index));
-    }
-    Ok(fired)
+        .map_err(|err| crate::kernel::runtime_host::VerletError::History(err.to_string()))?
+        .into_iter()
+        .collect())
 }
 
 fn next_tick_for_mandate(
