@@ -80,6 +80,46 @@ jobs:
           path: verify-output.log
           if-no-files-found: error
 
+  tests-devshell:
+    name: Workspace tests (nix devshell)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      # Same reasoning as the `tests` job: the debug --all-targets build does not
+      # fit in what a hosted runner leaves free where the work folder lives, and
+      # .cargo/config.toml puts the target dir in a sibling of the checkout.
+      - name: Free runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache /usr/lib/jvm /opt/microsoft /usr/lib/google-cloud-sdk \
+            /usr/local/share/powershell /usr/share/swift /opt/az
+          sudo docker image prune --all --force > /dev/null
+          sudo mkdir -p /opt/cargo-target
+          sudo chown "$(id -u):$(id -g)" /opt/cargo-target
+          ln -sfn /opt/cargo-target "${GITHUB_WORKSPACE%/*}/.cargo-target"
+          df -h
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      # No dtolnay/rust-toolchain and no wasm32 target here on purpose: the point
+      # of this job is to exercise the toolchain and environment the devshell
+      # actually hands a contributor, which rust-toolchain.toml already pins.
+      #
+      # `nix develop`, not `nix flake check`: the build sandbox has no network,
+      # which is why nix/packages.nix sets doCheck = false and ships no nextest
+      # check. The devshell has network, so the suite can run there.
+      #
+      # This job is what keeps the devshell honest. Without it the devshell can
+      # drift from CI silently -- it had accumulated 53 failures that CI never
+      # saw, because nothing in CI touched the flake.
+      - name: Workspace tests in the devshell
+        shell: bash
+        env:
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
+        run: nix develop -c cargo nextest run --workspace --locked
+
   tests-macmini:
     name: Workspace tests (macmini)
     # Public repo + self-hosted runner: never run fork-PR code on our hardware.
