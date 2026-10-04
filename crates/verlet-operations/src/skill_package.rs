@@ -239,21 +239,8 @@ impl SkillPackageBlobStore {
                 ))
             })?;
         }
-        match std::fs::rename(&tmp_path, &path) {
-            Ok(()) => Ok(hash),
-            Err(err) if path.exists() => {
-                let _ = std::fs::remove_file(&tmp_path);
-                if err.kind() == std::io::ErrorKind::AlreadyExists {
-                    Ok(hash)
-                } else {
-                    Ok(hash)
-                }
-            }
-            Err(err) => Err(crate::VerletOperationsError::RuntimeFactory(format!(
-                "failed to install skill package blob {}: {err}",
-                path.display()
-            ))),
-        }
+        crate::commit_content_addressed_artifact(&tmp_path, &path, "skill package blob")?;
+        Ok(hash)
     }
 
     fn artifact_path(&self, hash: &str) -> crate::VerletResult<std::path::PathBuf> {

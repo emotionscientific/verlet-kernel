@@ -10,6 +10,35 @@ pub mod tool_package;
 
 pub type VerletResult<T> = Result<T, VerletOperationsError>;
 
+/// Commit a content-addressed artifact by renaming `tmp_path` over `path`.
+///
+/// One rename failure is benign: a concurrent writer installing the *same* hash
+/// got there first, and because the destination is content-addressed it holds
+/// the same bytes either way. That race is the only reason a failure is
+/// tolerated, so the destination still has to be a regular file.
+///
+/// Any other failure — the destination is a directory, a leftover truncated
+/// file from an interrupted earlier write, `EACCES`, `ENOSPC` — is reported.
+/// Returning success there would claim an install that never happened, and the
+/// lie would only surface much later as a hash mismatch from the `get` paths.
+pub(crate) fn commit_content_addressed_artifact(
+    tmp_path: &std::path::Path,
+    path: &std::path::Path,
+    label: &str,
+) -> VerletResult<()> {
+    match std::fs::rename(tmp_path, path) {
+        Ok(()) => Ok(()),
+        Err(_) if path.is_file() => {
+            let _ = std::fs::remove_file(tmp_path);
+            Ok(())
+        }
+        Err(err) => Err(VerletOperationsError::RuntimeFactory(format!(
+            "failed to install {label} {}: {err}",
+            path.display()
+        ))),
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum VerletOperationsError {
     #[error("runtime factory failed: {0}")]
@@ -218,6 +247,34 @@ fn projection_tool_name_part(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn committing_an_artifact_refuses_a_destination_that_cannot_hold_it() {
+        let root = std::env::temp_dir().join(format!("verlet-commit-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&root).unwrap();
+        let tmp_path = root.join("artifact.tmp");
+        std::fs::write(&tmp_path, b"payload").unwrap();
+
+        // A directory already sitting at the destination cannot hold the
+        // artifact, so the failed rename has to be reported. The arm this
+        // replaced returned Ok for any destination that merely existed, which
+        // claimed an install that never happened.
+        let destination = root.join("occupied");
+        std::fs::create_dir(&destination).unwrap();
+
+        let error =
+            crate::commit_content_addressed_artifact(&tmp_path, &destination, "blob artifact")
+                .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to install blob artifact"),
+            "unexpected error: {error}"
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     #[test]
     fn registered_operation_derives_all_projection_surfaces() {
         let operation = crate::RegisteredOperation {
