@@ -433,7 +433,7 @@ async fn kernel_process_operations_write_and_terminate_host_process() {
         .invoke_json(
             crate::operations::kernel_packages::PROCESS_EXEC_OPERATION,
             serde_json::json!({
-                "command": ["/bin/cat"],
+                "command": ["cat"],
                 "stream_stdin": true,
                 "yield_time_ms": 1,
                 "timeout_ms": 5_000,
