@@ -2790,6 +2790,15 @@ impl AwsEventStreamHeaderValue {
     }
 }
 
+/// AWS caps an eventstream message at 16 MiB.
+///
+/// The decoder buffers until it holds `total_length` bytes, and `total_length`
+/// is read straight off the wire before any CRC has been checked. Without a
+/// ceiling, a hostile or wedged endpoint could declare a frame of up to the
+/// `u32` maximum (~4 GiB) and the client would accumulate it all before the
+/// prelude CRC got a chance to reject the frame.
+const MAX_AWS_EVENTSTREAM_FRAME_BYTES: usize = 16 * 1024 * 1024;
+
 #[derive(Default)]
 struct AwsEventStreamDecoder {
     buffer: Vec<u8>,
@@ -2814,6 +2823,11 @@ impl AwsEventStreamDecoder {
             if total_length < 16 {
                 return Err(ProviderError::Decode(format!(
                     "AWS eventstream frame total length {total_length} is smaller than the 16-byte frame overhead"
+                )));
+            }
+            if total_length > MAX_AWS_EVENTSTREAM_FRAME_BYTES {
+                return Err(ProviderError::Decode(format!(
+                    "AWS eventstream frame total length {total_length} exceeds the {MAX_AWS_EVENTSTREAM_FRAME_BYTES}-byte ceiling"
                 )));
             }
             if headers_length > total_length.saturating_sub(16) {
