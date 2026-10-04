@@ -329,6 +329,11 @@ pub async fn table_columns(conn: &Connection, table: &str) -> SqliteResult<Vec<S
 
 /// Add `column` (full `ALTER TABLE ... ADD COLUMN` tail in `ddl`) when it
 /// is absent — the additive-migration idiom every store repeats today.
+///
+/// `table` is quoted as an identifier, but `ddl` is interpolated into the
+/// statement verbatim, because it is a DDL fragment and not a value a
+/// placeholder could carry. `ddl` must therefore be a compile-time literal;
+/// never route caller- or model-supplied text into it.
 pub async fn ensure_column(
     conn: &Connection,
     table: &str,
