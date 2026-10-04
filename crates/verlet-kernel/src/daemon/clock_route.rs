@@ -1,6 +1,5 @@
 use chrono::TimeZone as _;
 use std::str::FromStr as _;
-use verlet_history::EventStore as _;
 
 pub const CLOCK_TICK_ROUTE_KIND: &str = "clock.tick";
 pub const TIMER_FIRED_ENVELOPE_KIND: &str = "timer.fired";
@@ -216,27 +215,14 @@ async fn fired_occurrence_indices(
 ) -> crate::kernel::runtime_host::VerletResult<
     std::collections::HashSet<(verlet_history::EventRecordId, u64)>,
 > {
-    let events = store
-        .read_events(
-            &crate::kernel::control_decision::control_stream_id(coordinates),
-            None,
-        )
+    Ok(store
+        .list_fired_timer_occurrences(&crate::kernel::control_decision::control_stream_id(
+            coordinates,
+        ))
         .await
-        .map_err(|err| crate::kernel::runtime_host::VerletError::History(err.to_string()))?;
-    let mut fired = std::collections::HashSet::new();
-    for event in events {
-        if event.kind != verlet_history::EventKind::TimerFired {
-            continue;
-        }
-        let payload = serde_json::from_value::<verlet_history::TimerFiredPayload>(event.payload)
-            .map_err(|err| {
-                crate::kernel::runtime_host::VerletError::History(format!(
-                    "timer.fired payload is invalid: {err}"
-                ))
-            })?;
-        fired.insert((payload.mandate_event_id, payload.occurrence_index));
-    }
-    Ok(fired)
+        .map_err(|err| crate::kernel::runtime_host::VerletError::History(err.to_string()))?
+        .into_iter()
+        .collect())
 }
 
 fn next_tick_for_mandate(
@@ -310,6 +296,23 @@ fn next_tick_for_mandate(
     }))
 }
 
+/// Rejects a zero interval before it reaches the occurrence arithmetic.
+///
+/// `mandate_lifecycle::validate_schedule` enforces `every_ms >=
+/// MIN_MANDATE_INTERVAL_MS` on the write path, but this route replays mandate
+/// payloads it read back out of the event store and never validated itself. A
+/// zero that reached here would divide by zero in the two index helpers below,
+/// panicking the route; `occurrence_at_index` would instead quietly place every
+/// occurrence at `start` and fire forever. Both are worse than a refusal.
+fn reject_zero_interval(every_ms: u64) -> crate::kernel::runtime_host::VerletResult<u64> {
+    if every_ms == 0 {
+        return Err(crate::kernel::runtime_host::VerletError::RuntimeExecution(
+            "interval schedule every_ms must be greater than zero".to_string(),
+        ));
+    }
+    Ok(every_ms)
+}
+
 fn occurrence_at_index(
     schedule: &crate::kernel::control_decision::MandateSchedulePayload,
     start: chrono::DateTime<chrono::Utc>,
@@ -322,6 +325,7 @@ fn occurrence_at_index(
                     "interval occurrence index overflowed".to_string(),
                 )
             })?;
+            let every_ms = reject_zero_interval(*every_ms)?;
             let offset_ms = every_ms.checked_mul(multiplier).ok_or_else(|| {
                 crate::kernel::runtime_host::VerletError::RuntimeExecution(
                     "interval occurrence offset overflowed".to_string(),
@@ -370,7 +374,8 @@ fn first_occurrence_index_at_or_after(
 ) -> crate::kernel::runtime_host::VerletResult<Option<u64>> {
     match schedule {
         crate::kernel::control_decision::MandateSchedulePayload::Interval { every_ms } => {
-            let every_ms_i64 = i64::try_from(*every_ms).map_err(|_| {
+            let every_ms = reject_zero_interval(*every_ms)?;
+            let every_ms_i64 = i64::try_from(every_ms).map_err(|_| {
                 crate::kernel::runtime_host::VerletError::RuntimeExecution(
                     "interval duration overflowed".to_string(),
                 )
@@ -386,7 +391,7 @@ fn first_occurrence_index_at_or_after(
                 return Ok(Some(0));
             }
             let diff_ms = threshold.signed_duration_since(first).num_milliseconds() as u64;
-            let index = diff_ms.div_ceil(*every_ms);
+            let index = diff_ms.div_ceil(every_ms);
             if max_occurrences.is_some_and(|max| index >= max) {
                 Ok(None)
             } else {
@@ -423,7 +428,8 @@ fn latest_occurrence_index_at_or_before(
 ) -> crate::kernel::runtime_host::VerletResult<Option<u64>> {
     match schedule {
         crate::kernel::control_decision::MandateSchedulePayload::Interval { every_ms } => {
-            let every_ms_i64 = i64::try_from(*every_ms).map_err(|_| {
+            let every_ms = reject_zero_interval(*every_ms)?;
+            let every_ms_i64 = i64::try_from(every_ms).map_err(|_| {
                 crate::kernel::runtime_host::VerletError::RuntimeExecution(
                     "interval duration overflowed".to_string(),
                 )
@@ -652,6 +658,41 @@ mod tests {
         assert_eq!(tick.occurrence_index, 1);
         assert_eq!(tick.scheduled_for, dt("2026-01-01T00:02:00Z"));
         assert!(!tick.catch_up);
+    }
+
+    #[test]
+    fn a_zero_interval_is_refused_instead_of_dividing_by_zero() {
+        // The write path (mandate_lifecycle::validate_schedule) enforces
+        // every_ms >= MIN_MANDATE_INTERVAL_MS, but this route replays mandate
+        // payloads read back out of the event store, which it never validated.
+        // A zero reaching the index helpers used to panic the whole route.
+        let schedule =
+            crate::kernel::control_decision::MandateSchedulePayload::Interval { every_ms: 0 };
+        let start = dt("2026-01-01T00:00:00Z");
+        let threshold = dt("2026-01-01T00:05:00Z");
+
+        assert!(
+            crate::daemon::clock_route::occurrence_at_index(&schedule, start, 0)
+                .unwrap_err()
+                .to_string()
+                .contains("every_ms must be greater than zero")
+        );
+        assert!(
+            crate::daemon::clock_route::first_occurrence_index_at_or_after(
+                &schedule, start, threshold, None,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("every_ms must be greater than zero")
+        );
+        assert!(
+            crate::daemon::clock_route::latest_occurrence_index_at_or_before(
+                &schedule, start, threshold, None,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("every_ms must be greater than zero")
+        );
     }
 
     #[test]

@@ -489,3 +489,44 @@ fn usage_and_provenance_survive_the_rebuild() {
     assert_eq!(provider, "anthropic");
     assert_eq!(api, &verlet_history::ProviderApi::AnthropicMessages);
 }
+
+#[test]
+fn duplicate_tool_results_for_one_call_are_collapsed_to_one() {
+    // The transform exists to hand the wire builders a shape the target can
+    // represent. Anthropic rejects two tool_result blocks carrying the same
+    // tool_use_id, and duplicate tool *calls* are already deduped via
+    // duplicate_call_ids, so the mirror case has to hold too.
+    let messages = vec![
+        verlet_history::CanonicalMessage::user_text("hi"),
+        assistant(
+            ANTHROPIC,
+            vec![verlet_history::CanonicalContent::tool_call(
+                "toolu_dup",
+                "lookup",
+                serde_json::json!({}),
+            )],
+            verlet_history::CanonicalStopReason::ToolUse,
+        ),
+        verlet_history::CanonicalMessage::tool_result("toolu_dup", "lookup", "first", false),
+        verlet_history::CanonicalMessage::tool_result("toolu_dup", "lookup", "second", false),
+    ];
+
+    let transformed = normalize(messages, ANTHROPIC);
+
+    let results = transformed
+        .messages
+        .iter()
+        .filter(|message| {
+            matches!(
+                message,
+                verlet_history::CanonicalMessage::ToolResult { tool_call_id, .. }
+                    if tool_call_id == "toolu_dup"
+            )
+        })
+        .count();
+    assert_eq!(
+        results, 1,
+        "exactly one tool result may survive per tool call, got {results}"
+    );
+    assert_eq!(transformed.counts.duplicate_tool_results_dropped, 1);
+}

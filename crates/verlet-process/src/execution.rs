@@ -181,7 +181,7 @@ pub struct HostBashExecutorConfig {
 impl HostBashExecutorConfig {
     pub fn new(workspace_root: impl Into<std::path::PathBuf>) -> Self {
         Self {
-            shell: std::path::PathBuf::from("/bin/bash"),
+            shell: resolve_host_bash(),
             workspace_root: workspace_root.into(),
         }
     }
@@ -190,6 +190,27 @@ impl HostBashExecutorConfig {
         self.shell = shell.into();
         self
     }
+}
+
+/// The first `bash` that exists at a conventional absolute path, else the bare
+/// name so the spawn resolves it through `PATH`.
+///
+/// `/bin/bash` is not universal: distributions that do not populate a legacy
+/// `/bin` ship only `/bin/sh` (NixOS is the case this was found on), and there
+/// hardcoding `/bin/bash` makes every host bash spawn fail with `ENOENT`.
+/// Probing first keeps the resolved path byte-identical wherever `/bin/bash`
+/// does exist, so this changes nothing on Debian, Ubuntu or macOS. The bare-name
+/// fallback matches how `ExternalCommandInvocation::Argv` already resolves host
+/// commands. Callers that need an exact interpreter use
+/// [`HostBashExecutorConfig::with_shell`].
+fn resolve_host_bash() -> std::path::PathBuf {
+    for candidate in ["/bin/bash", "/usr/bin/bash"] {
+        let candidate = std::path::Path::new(candidate);
+        if candidate.exists() {
+            return candidate.to_path_buf();
+        }
+    }
+    std::path::PathBuf::from("bash")
 }
 
 #[derive(Clone, Debug)]
@@ -409,16 +430,18 @@ impl ExternalCommandExecutor for HostBashExecutor {
 
 async fn terminate_external_child(child: &mut tokio::process::Child, child_id: Option<u32>) {
     #[cfg(unix)]
-    if let Some(child_id) = child_id {
+    if let Some(process_group) = crate::signalable_process_group(child_id) {
+        // SAFETY: process_group is a positive group id this child was made
+        // leader of; crate::signalable_process_group rejects 0 and negatives.
         unsafe {
-            libc::killpg(child_id as libc::pid_t, libc::SIGTERM);
+            libc::killpg(process_group, libc::SIGTERM);
         }
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         unsafe {
-            libc::killpg(child_id as libc::pid_t, libc::SIGKILL);
+            libc::killpg(process_group, libc::SIGKILL);
         }
         let _ = child.wait().await;
-        reap_adopted_process_group(child_id as libc::pid_t).await;
+        reap_adopted_process_group(process_group).await;
         return;
     }
     let _ = child.kill().await;
@@ -427,15 +450,16 @@ async fn terminate_external_child(child: &mut tokio::process::Child, child_id: O
 
 async fn terminate_reaped_external_group(child_id: Option<u32>) {
     #[cfg(unix)]
-    if let Some(child_id) = child_id {
+    if let Some(process_group) = crate::signalable_process_group(child_id) {
+        // SAFETY: see terminate_external_child.
         unsafe {
-            libc::killpg(child_id as libc::pid_t, libc::SIGTERM);
+            libc::killpg(process_group, libc::SIGTERM);
         }
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         unsafe {
-            libc::killpg(child_id as libc::pid_t, libc::SIGKILL);
+            libc::killpg(process_group, libc::SIGKILL);
         }
-        reap_adopted_process_group(child_id as libc::pid_t).await;
+        reap_adopted_process_group(process_group).await;
     }
     #[cfg(not(unix))]
     let _ = child_id;
@@ -470,7 +494,7 @@ struct ProcessGroupKillGuard {
 impl ProcessGroupKillGuard {
     fn new(child_id: Option<u32>) -> Self {
         Self {
-            process_group: child_id.map(|id| id as libc::pid_t),
+            process_group: crate::signalable_process_group(child_id),
         }
     }
 

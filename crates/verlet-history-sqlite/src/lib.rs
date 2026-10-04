@@ -189,6 +189,44 @@ impl SqliteSessionStore {
         Ok(coordinates)
     }
 
+    /// The `(mandate_event_id, occurrence_index)` pairs already fired on
+    /// `stream_id`.
+    ///
+    /// The clock route needs nothing but these pairs, and it asks on every
+    /// poll. Reading the whole stream to find them meant fetching and
+    /// deserializing every event record in it — `timer.fired` is a small
+    /// fraction of a control stream, and the payload of everything else was
+    /// parsed only to be discarded. Filtering on `kind` in SQL and selecting
+    /// the one column that is needed keeps the work proportional to the fired
+    /// timers instead of the whole stream.
+    pub async fn list_fired_timer_occurrences(
+        &self,
+        stream_id: &verlet_history::EventStreamId,
+    ) -> verlet_history::HistoryResult<Vec<(verlet_history::EventRecordId, u64)>> {
+        let timer_fired_kind: &str = verlet_history::EventKind::TimerFired.as_ref();
+        let connection = self.connect().await?;
+        let mut rows = connection
+            .query(
+                "SELECT payload_json
+                 FROM event_records
+                 WHERE stream_id = ?1 AND kind = ?2
+                 ORDER BY sequence",
+                verlet_sqlite::params![stream_id.to_string(), timer_fired_kind],
+            )
+            .await
+            .map_err(verlet_history::storage_error)?;
+        let mut fired = Vec::new();
+        while let Some(row) = rows.next().await.map_err(verlet_history::storage_error)? {
+            let payload_json = row
+                .get::<String>(0)
+                .map_err(verlet_history::storage_error)?;
+            let payload: verlet_history::TimerFiredPayload =
+                serde_json::from_str(&payload_json).map_err(verlet_history::codec_error)?;
+            fired.push((payload.mandate_event_id, payload.occurrence_index));
+        }
+        Ok(fired)
+    }
+
     pub async fn list_thread_events(
         &self,
         thread_id: verlet_runtime_contracts::ThreadId,

@@ -31,7 +31,12 @@ pub enum TelegramError {
     #[error("Telegram platform action {action:?} is missing or has invalid field {field:?}")]
     InvalidPlatformActionPayload { action: String, field: &'static str },
     #[error("Telegram API returned {status}: {body}")]
-    Api { status: u16, body: String },
+    Api {
+        status: u16,
+        body: String,
+        /// Seconds from the `parameters.retry_after` Telegram sends with a 429.
+        retry_after_secs: Option<u64>,
+    },
     #[error("Telegram API response was missing result")]
     MissingApiResult,
     #[error("Telegram API transport failed: {0}")]
@@ -51,6 +56,24 @@ impl From<TelegramError> for verlet_io_core::IoError {
             | TelegramError::InvalidThreadId(_) => {
                 verlet_io_core::IoError::InvalidEnvelope(value.to_string())
             }
+            // 429 is the only status that carries a wait; honor Telegram's own
+            // figure rather than guessing with a backoff curve.
+            TelegramError::Api {
+                status: 429,
+                retry_after_secs,
+                ..
+            } => verlet_io_core::IoError::RateLimited {
+                retry_after_ms: retry_after_secs.map(|secs| secs.saturating_mul(1_000)),
+                message: value.to_string(),
+            },
+            // 400 "chat not found", 401 bad token, 403 "bot was blocked by the
+            // user": the same request will fail the same way every time, so
+            // spending the remaining attempts on it only delays the dead
+            // letter.
+            TelegramError::Api {
+                status: 400 | 401 | 403,
+                ..
+            } => verlet_io_core::IoError::PermanentDelivery(value.to_string()),
             TelegramError::NoVisibleText
             | TelegramError::UnknownPlatformAction(_)
             | TelegramError::InvalidPlatformActionPayload { .. }
@@ -485,9 +508,18 @@ impl TelegramBotClient {
             .map_err(|err| TelegramError::Transport(sanitize_reqwest_error(err)))?;
 
         if !status.is_success() {
+            // A 429 carries its retry_after in the JSON body, so decode the
+            // body opportunistically here too; a body that will not parse
+            // simply yields no hint and falls back to the backoff curve.
+            let retry_after_secs =
+                serde_json::from_str::<TelegramApiResponse<serde_json::Value>>(&body)
+                    .ok()
+                    .and_then(|decoded| decoded.parameters)
+                    .and_then(|parameters| parameters.retry_after);
             return Err(TelegramError::Api {
                 status: status.as_u16(),
                 body: truncate_body(&body),
+                retry_after_secs,
             }
             .into());
         }
@@ -498,6 +530,9 @@ impl TelegramBotClient {
             return Err(TelegramError::Api {
                 status: decoded.error_code.unwrap_or(status.as_u16() as i64) as u16,
                 body: decoded.description.unwrap_or_else(|| "not ok".to_string()),
+                retry_after_secs: decoded
+                    .parameters
+                    .and_then(|parameters| parameters.retry_after),
             }
             .into());
         }
@@ -740,6 +775,15 @@ struct TelegramApiResponse<T> {
     result: Option<T>,
     description: Option<String>,
     error_code: Option<i64>,
+    parameters: Option<TelegramResponseParameters>,
+}
+
+/// The `parameters` object Telegram attaches to some errors. Only
+/// `retry_after` is read: it is how a 429 says how long to wait, and
+/// discarding it means retrying early and extending the limit.
+#[derive(Debug, serde::Deserialize)]
+struct TelegramResponseParameters {
+    retry_after: Option<u64>,
 }
 
 pub fn build_send_message_request(
@@ -1862,5 +1906,99 @@ mod tests {
         let egress = crate::TelegramEgressAdapter::new("main", "token").capabilities();
         assert!(!egress.ingress);
         assert!(egress.egress);
+    }
+}
+
+#[cfg(test)]
+mod retry_classification_tests {
+    #[test]
+    fn a_rate_limit_carries_telegrams_own_retry_after() {
+        let error = crate::TelegramError::Api {
+            status: 429,
+            body: "Too Many Requests: retry after 30".to_string(),
+            retry_after_secs: Some(30),
+        };
+
+        let io_error: verlet_io_core::IoError = error.into();
+
+        assert!(matches!(
+            io_error,
+            verlet_io_core::IoError::RateLimited {
+                retry_after_ms: Some(30_000),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn a_rate_limit_without_a_hint_is_still_a_rate_limit() {
+        let error = crate::TelegramError::Api {
+            status: 429,
+            body: "Too Many Requests".to_string(),
+            retry_after_secs: None,
+        };
+
+        let io_error: verlet_io_core::IoError = error.into();
+
+        assert!(matches!(
+            io_error,
+            verlet_io_core::IoError::RateLimited {
+                retry_after_ms: None,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn blocked_bot_and_missing_chat_are_permanent_not_retryable() {
+        for status in [400, 401, 403] {
+            let error = crate::TelegramError::Api {
+                status,
+                body: "bot was blocked by the user".to_string(),
+                retry_after_secs: None,
+            };
+
+            let io_error: verlet_io_core::IoError = error.into();
+
+            assert!(
+                matches!(io_error, verlet_io_core::IoError::PermanentDelivery(_)),
+                "status {status} should be permanent, got {io_error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_server_side_fault_stays_an_ordinary_retryable_delivery_failure() {
+        for status in [500, 502, 503] {
+            let error = crate::TelegramError::Api {
+                status,
+                body: "Bad Gateway".to_string(),
+                retry_after_secs: None,
+            };
+
+            let io_error: verlet_io_core::IoError = error.into();
+
+            assert!(
+                matches!(io_error, verlet_io_core::IoError::Delivery(_)),
+                "status {status} should stay retryable, got {io_error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_429_body_yields_its_retry_after_through_the_response_parameters() {
+        // Pins the deserialization, which is where the hint was being dropped:
+        // TelegramApiResponse did not model `parameters` at all.
+        let decoded: crate::TelegramApiResponse<serde_json::Value> = serde_json::from_str(
+            r#"{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 17","parameters":{"retry_after":17}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            decoded
+                .parameters
+                .and_then(|parameters| parameters.retry_after),
+            Some(17)
+        );
     }
 }

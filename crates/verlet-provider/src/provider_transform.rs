@@ -39,6 +39,7 @@ pub struct ReplayTransformCounts {
     pub cache_controls_stripped: usize,
     pub dangling_tool_calls_dropped: usize,
     pub unpaired_tool_results_dropped: usize,
+    pub duplicate_tool_results_dropped: usize,
     pub errored_assistants_dropped: usize,
     pub empty_assistants_dropped: usize,
 }
@@ -55,6 +56,7 @@ impl ReplayTransformCounts {
         self.cache_controls_stripped += other.cache_controls_stripped;
         self.dangling_tool_calls_dropped += other.dangling_tool_calls_dropped;
         self.unpaired_tool_results_dropped += other.unpaired_tool_results_dropped;
+        self.duplicate_tool_results_dropped += other.duplicate_tool_results_dropped;
         self.errored_assistants_dropped += other.errored_assistants_dropped;
         self.empty_assistants_dropped += other.empty_assistants_dropped;
     }
@@ -73,7 +75,8 @@ pub struct ReplayTransform {
 /// - assistants whose turn ended in `Error` or `Cancelled` are dropped,
 ///   together with the tool results answering their tool calls;
 /// - tool calls with no recorded tool result are dropped; tool results
-///   with no surviving issuing tool call are dropped;
+///   with no surviving issuing tool call are dropped, and a tool call keeps
+///   only the first result answering it;
 /// - thinking from a different api/provider converts to a `<thinking>`
 ///   text block when it has visible text and is dropped otherwise; native
 ///   thinking passes verbatim;
@@ -130,6 +133,11 @@ pub fn normalize_history_for_target(
         _ => None,
     };
 
+    // A tool call keeps at most one answering result: the wire shape pairs them
+    // one-to-one, and a second result for an id already emitted is rejected by
+    // the target the same way a duplicate tool call would be.
+    let mut emitted_result_call_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     let mut output = Vec::with_capacity(messages.len());
     for (index, message) in messages.into_iter().enumerate() {
         match message {
@@ -243,6 +251,10 @@ pub fn normalize_history_for_target(
                     .is_some_and(|&issuer| !errored[issuer]);
                 if !issuer_alive {
                     counts.unpaired_tool_results_dropped += 1;
+                    continue;
+                }
+                if !emitted_result_call_ids.insert(tool_call_id.clone()) {
+                    counts.duplicate_tool_results_dropped += 1;
                     continue;
                 }
                 let cache_control =

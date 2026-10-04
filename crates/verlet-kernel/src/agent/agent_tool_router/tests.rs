@@ -447,7 +447,7 @@ async fn router_invokes_kernel_process_operation_alias() {
             "call_1",
             crate::operations::kernel_packages::PROCESS_EXEC_OPERATION,
             serde_json::json!({
-                "command": ["/bin/pwd"],
+                "command": ["pwd"],
                 "yield_time_ms": 1_000,
                 "timeout_ms": 2_000
             }),
