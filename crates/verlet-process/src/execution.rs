@@ -181,7 +181,7 @@ pub struct HostBashExecutorConfig {
 impl HostBashExecutorConfig {
     pub fn new(workspace_root: impl Into<std::path::PathBuf>) -> Self {
         Self {
-            shell: std::path::PathBuf::from("/bin/bash"),
+            shell: resolve_host_bash(),
             workspace_root: workspace_root.into(),
         }
     }
@@ -190,6 +190,27 @@ impl HostBashExecutorConfig {
         self.shell = shell.into();
         self
     }
+}
+
+/// The first `bash` that exists at a conventional absolute path, else the bare
+/// name so the spawn resolves it through `PATH`.
+///
+/// `/bin/bash` is not universal: distributions that do not populate a legacy
+/// `/bin` ship only `/bin/sh` (NixOS is the case this was found on), and there
+/// hardcoding `/bin/bash` makes every host bash spawn fail with `ENOENT`.
+/// Probing first keeps the resolved path byte-identical wherever `/bin/bash`
+/// does exist, so this changes nothing on Debian, Ubuntu or macOS. The bare-name
+/// fallback matches how `ExternalCommandInvocation::Argv` already resolves host
+/// commands. Callers that need an exact interpreter use
+/// [`HostBashExecutorConfig::with_shell`].
+fn resolve_host_bash() -> std::path::PathBuf {
+    for candidate in ["/bin/bash", "/usr/bin/bash"] {
+        let candidate = std::path::Path::new(candidate);
+        if candidate.exists() {
+            return candidate.to_path_buf();
+        }
+    }
+    std::path::PathBuf::from("bash")
 }
 
 #[derive(Clone, Debug)]
