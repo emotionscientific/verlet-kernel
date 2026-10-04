@@ -1,0 +1,11 @@
+# The browser-login tests bind the OAuth callback listener, and its port is
+# fixed: CALLBACK_ADDR in crates/verlet-kernel/src/openai_codex.rs must match the
+# redirect URI registered with the provider, so it cannot be an ephemeral port.
+# One of these tests deliberately occupies the port to assert the device-flow
+# fallback, so running them concurrently makes the other fail to bind.
+[test-groups.oauth-callback-port]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = 'test(/^openai_codex::tests::browser_login_/)'
+test-group = 'oauth-callback-port'
