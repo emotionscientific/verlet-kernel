@@ -62,7 +62,7 @@ jobs:
         with:
           components: rustfmt
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: Swatinem/rust-cache@v2.9.3
       - name: Verify workspace
         shell: bash
         env:
@@ -165,7 +165,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: Swatinem/rust-cache@v2.9.3
       - name: Build daemon
         run: cargo build --locked --bin verlet
       - name: Verify process restart continuity
